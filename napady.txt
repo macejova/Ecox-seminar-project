@@ -1,0 +1,36 @@
+POZN. k DATAM:
+- všeobecne sa dá analýza robiť samostatne pre dážď a normálne obdobia, tj odobratím daždivých období z dát
+- daždivé obdobia sa dajú približne odhadnúť jednoduchým odseknutím horných kvantilov, napr horných 20% (určiť natvrdo heuristicky alebo 
+	optimalizovať (min var vs min falošné signály))
+
+DETEKCIA:
+- nulový prietok - triviálne
+- osamotené vychýlené pozorovania sú zpravidla charakterizované okamžitou korekciou, tj. dajú sa identifikovať pomocou prvých 
+	diferencií v T a T+1 - prvá je príliš veľká/malá, druhá naopak; príliš veľká znamená nad nejakým tresholdom, napr. std pásmom
+pozn - std pásmo sa dá určiť celkovým (robustným) std časovej rady, pri osamotených výchylkach by asi presnejšie fungovali kĺzavé std 
+
+- náhle prepady/nárasty trvajúce viac než jedno obdobie sa dajú opäť identifikovať veľkou (v abs hodnote) prvou diferenciou, tentokrát ale
+	nenasledovanou okamžitou korekciou; korekcia sa môže oneskoriť o niekoľko období, alebo môže byť postupná, nie náhla;
+	môže byť aj otázne, či ide skutočne o chybu ... TO DO: rozmyslieť si podrobnosti
+- ako detekovať obdobia neprirodzene zvýšenej volatility (mohli by byť spôosobené zvýšenou prítomnosťou nečistôt vo vode)? nejako využiť kombináciu
+	toho, že kĺzavé std prekročia nejaký threshold zatiaľčo kĺzavé priemery zostanú relatívne stabilné (pri daždi by bolo normálne, že kĺzavé
+	std sa zvyšujú), napr. kĺzavý priemer neprekročí nejakú hladinu alebo kĺzavý std kĺzavého priemeru zostane oveľa stabilnejší než kĺzavý
+	std pôvodnej rady
+
+OPRAVY:
+- osamotené výchylky sa dajú napraviť tým, že ich nahradíme priemerom susedných pozorovaní T-1,T+1
+- šum z príkladového datasetu sa dá celkom pekne opraviť obyčajným centrovaným MA
+- všeobecne sa opravy dajú robiť nahradením chybných pozorovaní fitted values z vybraného modelu
+- ... alebo vymazaním chybných pozorovaní a ich náhradou predikciami vybraného modelu
+- predikcie pre medzery uprostredy rady sa dajú robiť kombinovaním predikcií z oboch smerov (konvexné kombinácie s premenlivými váhami, váhy
+	na začiatku medzery sa prikláňajú k predikciám zľava a naopak...; funckia určujúca váhy môže (ale nemusí) byť nepárna okolo stredu 
+	medzery; dajú sa uvažovať parametrické váhové funkcie, ktoré sa natrénujú)
+
+
+
+MODELY:
+metody z ČŘ: Tr+S+E dekompozicie, MA, Holtova metoda, ARIMA, ETS (zahrnuje exp. vyrovnavanie), GARCH (ten asi fakt nie)
+
+- môžeme kombinovať viacero modelov, napr. určiť sezónnosť na agregovaných dátach, povedzme hodinové cykclické zložky s dennými cyklami odhadnuté
+	na hodinových dátach a následne očistiť pôvodné dáta o tieto cyklické komponenty 
+	
