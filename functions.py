@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[13]:
+
 
 """Python script containing some useful functions"""
 
@@ -14,8 +19,6 @@ import statsmodels.api as sm
 from statsmodels.tsa.exponential_smoothing.ets import ETSModel
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.cluster import KMeans
-
-
 
 def hr_func(ts):
     return ts.hour ##Goes
@@ -56,8 +59,6 @@ def cyclical_adj_external(data, fit, var = "Prietok"):
     data = get_cyclical_adjustment(data, fit, var)
 
     return data
-
-
 
 def load_series(directory, files_list=False):
     """
@@ -122,8 +123,6 @@ def load_series(directory, files_list=False):
                 continue  
     return dataframes_dict
 
-
-
 def merge_site_data(dataframes_dict):
     """
     Merge data from multiple DataFrames based on common date columns for each site. 
@@ -155,8 +154,6 @@ def merge_site_data(dataframes_dict):
         site_dataframes[site] = df
     return site_dataframes
 
-
-
 def clean_data(datas_dictionary, main_var="prutok_computed"):
     """
     Clean data in Pandas DataFrames by removing rows with missing values in a specified main variable.
@@ -183,8 +180,6 @@ def clean_data(datas_dictionary, main_var="prutok_computed"):
         cleaned_datas[site] = df
     return cleaned_datas
 
-
-
 def join_data(datas_dictionary):
     """
     Concatenate data from multiple Pandas DataFrames corresponding to different sites. Adds 'site' information to the resulting DF.
@@ -207,8 +202,6 @@ def join_data(datas_dictionary):
         datas_dictionary[site]["site"] = site  # add site name column
     result = pd.concat(list(datas_dictionary.values()), join='outer', ignore_index=True)
     return result
-
-
 
 def join_series(indicators, tol=5, join=1):
     """
@@ -238,11 +231,15 @@ def join_series(indicators, tol=5, join=1):
     new_indicators = indicators.mask(groups_to_join & (indicators == delete), join)
     return new_indicators
 
-
-
 class TS_Class:
     """
-    Time Series Class for handling and analyzing time series data.
+    Time Series Class for handling and analyzing time series data. 
+    Main functionalities are:
+        - classification of events present in the time series
+        - replacement of values from events with the corrected values
+        - plotting data in wide variety of ways, including plotting of chosen subsets, with chosen periodicity, 
+        with variety of statistical measures and multiple variables in the same graph or side-by-side
+        - plotting of comparisons between the original data and corrected data with the denoted events
 
     Parameters:
     data (pandas.DataFrame): The input time series data containing a 'date' column and the main variable.
@@ -756,8 +753,6 @@ class TS_Class:
             plot_categories(group_data, main_var, unit, categories, fig_size)
     
 
-
-
 def classify(data, main_var = "prutok_computed"
              , W_0 = 3
              , c_1 = 2.5, W_1 = 30
@@ -793,7 +788,7 @@ def classify(data, main_var = "prutok_computed"
     data.loc[high_vol_rain, main_var + "_category"] = "volatile_rain"
     
     # priority 2
-    zeros = data[main_var] == 0
+    zeros = data[main_var] <= 0
     data.loc[zeros, main_var + "_category"] = "zero_value"
     
     # priority 1
@@ -809,8 +804,6 @@ def classify(data, main_var = "prutok_computed"
         data[col] = np.where(dummies[col] == 1, data[main_var], np.nan)
     #data = pd.concat([data, dummies], axis=1)
     return data
-
-
 
 def plot_categories(df, main_var, unit, categories = "all", fig_size = None):
     
@@ -843,8 +836,6 @@ def plot_categories(df, main_var, unit, categories = "all", fig_size = None):
     plt.title(f'Time Series for {unit}')
     plt.legend()
     plt.show()
-
-
 
 class Data_Explorer:
     
@@ -879,6 +870,8 @@ class Data_Explorer:
         self.end_dates = {site: self.TS_objects[site].end_date for site in self.sites}
         self.periodicities = {site: self.TS_objects[site].periodicity for site in self.sites}
 
+
+# In[ ]:
 
 
 
