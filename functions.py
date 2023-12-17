@@ -1224,7 +1224,7 @@ def classify(data, classif_var="prutok_computed", W_0=3,
     #data = pd.concat([data, dummies], axis=1)
     return data
 
-def plot_categories(df, classif_var, unit, categories = "all", fig_size = None):
+def plot_categories(df, classif_var, unit, categories="all", fig_size=None):
     
     if categories == "all":
         cats = list(df[classif_var + "_category"].unique())
@@ -1256,91 +1256,6 @@ def plot_categories(df, classif_var, unit, categories = "all", fig_size = None):
     plt.legend()
     plt.show()
 
-
-
-def classify(data, main_var = "prutok_computed"
-             , W_0 = 3
-             , c_1 = 2.5, W_1 = 30
-             , c_2 = 1, W_2 = 30, p_1 = 0.7
-            , W_3 = 5, p_2 = 0.9
-            , tol_vol_1 = 5, tol_vol_2 = 5
-            , tol_rain_1 = 5, tol_rain_2 = 10):
-    data[main_var + "_category"] = "OK"
-    
-    # priority 5
-    const = data[main_var].rolling(window=W_0, center=True).std() == 0
-    data.loc[const, main_var + "_category"] = "const_value"
-    
-    # priority 4
-    subset = data[main_var] <= data[main_var].quantile(p_1)
-    sd_p_1 = data[subset][main_var].std()
-    K = c_2*sd_p_1
-    sd_2 = data[main_var].rolling(window=W_2, center=True).std()
-    high_vol_orig = sd_2 > K
-    high_vol = join_series(high_vol_orig.astype(int), tol = tol_vol_1, join = 1)  # group nearby islands of volatility
-    high_vol = join_series(high_vol, tol = tol_vol_2, join = 0)  # delete small islands of volatility
-    high_vol = high_vol.astype(bool)
-    data.loc[high_vol, main_var + "_category"] = "volatile"
-    
-    # priority 3
-    MA = data[main_var].rolling(window=W_3, center=True).mean()
-    rain_threshold = data[main_var].quantile(p_2)
-    rainy = MA >= rain_threshold
-    high_vol_rain = high_vol_orig & rainy
-    high_vol_rain = join_series(high_vol_rain.astype(int), tol = tol_rain_1, join = 1)  # group nearby islands of rain
-    high_vol_rain = join_series(high_vol_rain, tol = tol_rain_2, join = 0)  # delete small islands of rain
-    high_vol_rain = high_vol_rain.astype(bool)
-    data.loc[high_vol_rain, main_var + "_category"] = "volatile_rain"
-    
-    # priority 2
-    zeros = data[main_var] <= 0
-    data.loc[zeros, main_var + "_category"] = "zero_value"
-    
-    # priority 1
-    first_diff = data[main_var].diff()
-    first_diff_plus = first_diff.shift(-1)
-    sd_1 = first_diff.rolling(window=W_1, center=True).std()
-    T = c_1*sd_1
-    outliers = ((first_diff > T) & (first_diff_plus < -T)) | ((first_diff < -T) & (first_diff_plus > T))
-    data.loc[outliers, main_var + "_category"] = "outlier"
-    
-    dummies = pd.get_dummies(data[main_var + "_category"], prefix=main_var)
-    for col in dummies.columns:
-        data[col] = np.where(dummies[col] == 1, data[main_var], np.nan)
-    #data = pd.concat([data, dummies], axis=1)
-    return data
-
-def plot_categories(df, main_var, unit, categories = "all", fig_size = None):
-    
-    if categories == "all":
-        cats = list(df[main_var + "_category"].unique())
-        if "OK" in cats:
-            cats.remove("OK")
-    else:
-        cats = categories
-    cols = [main_var + "_" + cat for cat in cats]
-    
-    if fig_size is None: 
-        fig_size = (10, 6)
-    plt.figure(figsize=fig_size)
-    plt.plot(df['date'], df[main_var], label=main_var, color='blue')  # Line plot for var1
-
-    # Plot special categories as scatter plots with different markers
-    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*"}  # Define markers for each category (max 5 categories)
-    colors = ["green", "brown", "red", "yellow", "orange"]
-    colors = {key: col for key, col in zip(markers.keys(), colors)}
-    for i, column in enumerate(cols):
-        cat = cats[i]
-        if cat in ["volatile_rain", "volatile"]:
-            plt.plot(df['date'], df[column], label=cat, linestyle='-', marker=markers[cat], color = colors[cat])
-        else:
-            plt.scatter(df['date'], df[column], label=cat, marker=markers[cat], color = colors[cat])
-
-    plt.xlabel('Date and Time')
-    plt.ylabel(main_var)
-    plt.title(f'Time Series for {unit}')
-    plt.legend()
-    plt.show()
 
 def identify_groups(indicators):
     groups = (indicators.diff() != 0).cumsum().astype(str)
