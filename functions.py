@@ -1175,7 +1175,8 @@ def classify(data, classif_var="prutok_computed", W_0=3,
              W_3=5, p_2=0.9,
              tol_vol_1=5, tol_vol_2=5,
              tol_rain_1=5, tol_rain_2=10,
-             volatile_diffs=True):
+             volatile_diffs=True,
+             num_back = 10):
     data[classif_var + "_category"] = "OK"
     # priority 5
     const = data[classif_var].rolling(window=W_0, center=True).std() == 0
@@ -1209,7 +1210,16 @@ def classify(data, classif_var="prutok_computed", W_0=3,
     # priority 2
     zeros = data[classif_var] <= 0
     data.loc[zeros, classif_var + "_category"] = "zero_value"
-    
+
+    # priority 1.5
+    first_diff = data[classif_var].diff()
+    rain_prev = rainy.shift(list(range(1, 1+num_back))).any(axis = 1)
+    sd_1 = first_diff.rolling(window=W_1, center=True).std()
+    T = c_1*sd_1
+    prol_down = (first_diff < -T) & ~rain_prev
+    data.loc[prol_down, classif_var + "_category"] = "prol_down"
+
+
     # priority 1
     first_diff = data[classif_var].diff()
     first_diff_plus = first_diff.shift(-1)
@@ -1240,8 +1250,8 @@ def plot_categories(df, classif_var, unit, categories="all", fig_size=None):
     plt.plot(df['date'], df[classif_var], label=classif_var, color='blue')  # Line plot for var1
 
     # Plot special categories as scatter plots with different markers
-    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*"}  # Define markers for each category (max 5 categories)
-    colors = ["green", "brown", "red", "yellow", "orange"]
+    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*", 'prol_down': "v"}  # Define markers for each category (max 6 categories)
+    colors = ["green", "brown", "red", "yellow", "orange", "black"]
     colors = {key: col for key, col in zip(markers.keys(), colors)}
     for i, column in enumerate(cols):
         cat = cats[i]
