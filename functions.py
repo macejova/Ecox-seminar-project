@@ -1230,7 +1230,7 @@ def classify(data, classif_var="prutok_computed",
     # priority 1.5
     ##Typically flags either non-classified outliers or variables after outliers
     first_diff = data[classif_var].diff()
-    rain_prev = rainy.shift(list(range(1, 1+num_back))).any(axis = 1) ##Check whether any of previous num_back obs. were classified as rainy
+    #rain_prev = rainy.shift(list(range(1, 1+num_back))).any(axis = 1) ##Check whether any of previous num_back obs. were classified as rainy
     sd_1 = first_diff.rolling(window=W_1, center=True).std()
     T = c_3*sd_1##TODO: Define the treshold more accurately
     ma_4 = data[classif_var].rolling(window=W_4).mean() ##Average over preceeding W_4 values
@@ -1244,8 +1244,8 @@ def classify(data, classif_var="prutok_computed",
         else:
             fol_down = fol_down & mask
         
-    prol_down = decline & ~ rain_prev & fol_down ##TODO: Decide wether to implement check for zero values (or wether to keep zeroes included)
-    data.loc[prol_down, classif_var + "_category"] = "prol_down"
+    #prol_down = decline & ~ rain_prev & fol_down ##TODO: Decide wether to implement check for zero values (or wether to keep zeroes included)
+    #data.loc[prol_down, classif_var + "_category"] = "prol_down"
 
 
     # priority 1
