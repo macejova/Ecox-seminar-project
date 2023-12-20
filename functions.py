@@ -1188,7 +1188,9 @@ def classify(data, classif_var="prutok_computed",
              W_3=5, p_2=0.9,
              tol_vol_1=5, tol_vol_2=5,
              tol_rain_1=5, tol_rain_2=10,
-             volatile_diffs=True):
+             volatile_diffs=True,
+             num_back = 10, num_fol = 3,
+             fol_tresh = 1, W_4 = 3, c_3 = 2):
     data[classif_var + "_category"] = "OK"
     # priority 5
     const = data[classif_var].rolling(window=W_0, center=True).std() == 0
@@ -1224,7 +1226,28 @@ def classify(data, classif_var="prutok_computed",
     # priority 2
     zeros = data[classif_var] <= 0
     data.loc[zeros, classif_var + "_category"] = "zero_value"
-    
+
+    # priority 1.5
+    ##Typically flags either non-classified outliers or variables after outliers
+    first_diff = data[classif_var].diff()
+    rain_prev = rainy.shift(list(range(1, 1+num_back))).any(axis = 1) ##Check whether any of previous num_back obs. were classified as rainy
+    sd_1 = first_diff.rolling(window=W_1, center=True).std()
+    T = c_3*sd_1##TODO: Define the treshold more accurately
+    ma_4 = data[classif_var].rolling(window=W_4).mean() ##Average over preceeding W_4 values
+    decline = ma_4 - data[classif_var] > T ##Check, whether current value is significantly bellow avarage of W_4 previous observations
+
+    ##Check, whether the following num_fol values are bellow the value preceeding the theoretical drop 
+    for i in range(1, num_fol+1):
+        mask = data[classif_var].shift(-i) < data[classif_var].shift()*fol_tresh
+        if i ==1:
+            fol_down = mask
+        else:
+            fol_down = fol_down & mask
+        
+    prol_down = decline & ~ rain_prev & fol_down ##TODO: Decide wether to implement check for zero values (or wether to keep zeroes included)
+    data.loc[prol_down, classif_var + "_category"] = "prol_down"
+
+
     # priority 1
     first_diff = data[classif_var].diff()
     first_diff_plus = first_diff.shift(-1)
@@ -1256,8 +1279,8 @@ def plot_categories(df, classif_var, unit, categories="all", fig_size=None, corr
     
 
     # Plot special categories as scatter plots with different markers
-    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*"}  # Define markers for each category (max 5 categories)
-    colors = ["green", "brown", "red", "yellow", "orange"]
+    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*", 'prol_down': "v"}  # Define markers for each category (max 6 categories)
+    colors = ["green", "brown", "red", "yellow", "orange", "black"]
     colors = {key: col for key, col in zip(markers.keys(), colors)}
     for i, column in enumerate(cols):
         cat = cats[i]
