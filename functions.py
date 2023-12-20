@@ -1188,7 +1188,9 @@ def classify(data, classif_var="prutok_computed",
              W_3=5, p_2=0.9,
              tol_vol_1=5, tol_vol_2=5,
              tol_rain_1=5, tol_rain_2=10,
-             volatile_diffs=True):
+             volatile_diffs=True,
+             num_back = 10, num_fol = 3,
+             fol_tresh = 1, W_4 = 3, c_3 = 2):
     data[classif_var + "_category"] = "OK"
     # priority 5
     const = data[classif_var].rolling(window=W_0, center=True).std() == 0
@@ -1224,7 +1226,28 @@ def classify(data, classif_var="prutok_computed",
     # priority 2
     zeros = data[classif_var] <= 0
     data.loc[zeros, classif_var + "_category"] = "zero_value"
-    
+
+    # priority 1.5
+    ##Typically flags either non-classified outliers or variables after outliers
+    first_diff = data[classif_var].diff()
+    rain_prev = rainy.shift(list(range(1, 1+num_back))).any(axis = 1) ##Check whether any of previous num_back obs. were classified as rainy
+    sd_1 = first_diff.rolling(window=W_1, center=True).std()
+    T = c_3*sd_1##TODO: Define the treshold more accurately
+    ma_4 = data[classif_var].rolling(window=W_4).mean() ##Average over preceeding W_4 values
+    decline = ma_4 - data[classif_var] > T ##Check, whether current value is significantly bellow avarage of W_4 previous observations
+
+    ##Check, whether the following num_fol values are bellow the value preceeding the theoretical drop 
+    for i in range(1, num_fol+1):
+        mask = data[classif_var].shift(-i) < data[classif_var].shift()*fol_tresh
+        if i ==1:
+            fol_down = mask
+        else:
+            fol_down = fol_down & mask
+        
+    prol_down = decline & ~ rain_prev & fol_down ##TODO: Decide wether to implement check for zero values (or wether to keep zeroes included)
+    data.loc[prol_down, classif_var + "_category"] = "prol_down"
+
+
     # priority 1
     first_diff = data[classif_var].diff()
     first_diff_plus = first_diff.shift(-1)
@@ -1256,8 +1279,8 @@ def plot_categories(df, classif_var, unit, categories="all", fig_size=None, corr
     
 
     # Plot special categories as scatter plots with different markers
-    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*"}  # Define markers for each category (max 5 categories)
-    colors = ["green", "brown", "red", "yellow", "orange"]
+    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*", 'prol_down': "v"}  # Define markers for each category (max 6 categories)
+    colors = ["green", "brown", "red", "yellow", "orange", "black"]
     colors = {key: col for key, col in zip(markers.keys(), colors)}
     for i, column in enumerate(cols):
         cat = cats[i]
@@ -1312,37 +1335,7 @@ def summarize_event_groups(data, classif_var, give_groups=False, show=False):
         return data
     return summaries
 
-def outliers_ext_indic(outlier_indic, ext_by=1):
-    extended_indices = []
-    for i in outlier_indic:
-        for j in range(ext_by,0,-1):
-            extended_indices.append(i - j)  # Add the rows above
-        for j in range(ext_by+1):
-            extended_indices.append(i+j)      # Add the chosen row and the rows below
-    return extended_indices 
 
-    
-def correct_data(data, corr_var,
-                 outliers_window=1):
-    
-    def mean_around(series):
-        center = int(len(series)/2)
-        center_index = series.index[center]
-        mean = series.drop(center_index).mean()
-        return mean
-    
-    data[corr_var + "_corrected_"] = data[corr_var]
-    data["_MA_5"] = data[corr_var].rolling(5, center=True).mean()
-    data["_MA_15"] = data[corr_var].rolling(15, center=True).mean()
-    data["_MA_30"] = data[corr_var].rolling(30, center=True).mean()
-    
-    outlier_indic = data[corr_var + "_category"] == "outlier"
-    outlier_ext_indic = outliers_ext_indic(data.index[outlier_indic], outliers_window)
-    outliers_correction = data[corr_var][outlier_ext_indic].rolling(2*outliers_window+1, center=True).apply(mean_around) 
-    data.loc[outlier_indic,corr_var + "_corrected_"] = outliers_correction[outlier_indic]
-    # TO DO: the rest
-    
-    return data
 
 def loc_extr(values, both=True, minim=True):
     center = int(len(values)/2)
