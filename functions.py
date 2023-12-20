@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[8]:
+
+
 """Python script containing some useful functions"""
 
 import os
@@ -32,14 +38,21 @@ def create_cyclical_features(data):
     data.describe()
     return data
 
-def fit_cyclical_model(data, weekdays = True, var = "Prietok"):
+def fit_cyclical_model(data, weekdays = True, var = "Prietok", filter_zeros = True, filter_rain = True, rain_quantile = 0.9):
     """Fits a simple LR model to predict values for categorical variables used to eliminate cyclcity"""
-    #TODO: Add filtration of extreme values
+    data_filtered = data
+    if filter_zeros:
+        data_filtered = data_filtered[data_filtered[var]!=0]
+    if filter_rain:
+        rain_threshold = data_filtered[var].quantile(rain_quantile)
+        data_filtered = data_filtered[data_filtered[var]<= rain_threshold]
+
     if weekdays:
         relev = "weekday"
     else:
         relev = "weekend"
-    fit = ols(f"{var}~ C(hour) * C({relev})", data = data).fit()
+
+    fit = ols(f"{var}~ C(hour) * C({relev})", data = data_filtered).fit()
     return(fit)
 
 def get_cyclical_adjustment(data, fit, var = "Prietok"):
@@ -50,10 +63,10 @@ def get_cyclical_adjustment(data, fit, var = "Prietok"):
     data[f"{var}_cyclicaly_adjusted"] = data[var] - data[f"{var}_cyclical_adjustment"]
     return data
 
-def cyclical_adj_full(data, weekdays = True, var = "Prietok", return_fit = False):
+def cyclical_adj_full(data, weekdays = True, var = "Prietok", return_fit = False, filter_zeros = True, filter_rain = True, rain_quantile = 0.9):
     """One function for the whole workload"""
     data = create_cyclical_features(data)
-    fit = fit_cyclical_model(data, weekdays, var)
+    fit = fit_cyclical_model(data, weekdays, var, filter_zeros, filter_rain, rain_quantile)
     data = get_cyclical_adjustment(data, fit, var)
 
     if return_fit:
@@ -75,11 +88,11 @@ def apply_smooth_cyclical_adjustment(data, var = "Prietok", adj_var = 'Prietok_c
     return smoothly_adjusted_main_var
 
 def get_smooth_cycl_adjustment_full(data, var = "Prietok",  weekdays = False, window  = 7, center = True, min_periods = 1, display_smoothed_adj = True,
-                                    ext_fit = False, fit = None):
+                                    ext_fit = False, fit = None, filter_zeros = True, filter_rain = True, rain_quantile = 0.9):
     if ext_fit:
         data = cyclical_adj_external(data, fit, var)
     else:
-        data = cyclical_adj_full(data, weekdays, var)
+        data = cyclical_adj_full(data, weekdays, var, filter_zeros, filter_rain, rain_quantile)
 
     if display_smoothed_adj:
         data[f"{var}_smooth_cyclical_adjustment"] = smoothing_cycl_adjustment(data, f"{var}_cyclical_adjustment", window, center, min_periods)
@@ -288,16 +301,26 @@ class TS_Class:
     period_data_2 (pandas.groupby): Grouped data based on the specified period.     *non-public?
 
     """
-    DEFAULT_CLASSIF_PARAMS = {"data": None, "classif_var": None, "W_0": 3,
-                              "c_1": 2.5, "W_1": 30,
-                              "c_2": 1, "W_2": 30, "p_1": 0.7,
-                              "W_3": 5, "p_2": 0.9,
-                              "tol_vol_1": 5, "tol_vol_2": 5,
-                              "tol_rain_1": 5, "tol_rain_2": 10,
-                              "volatile_diffs": True}
+    
+    @property
+    def DEFAULT_CLASSIF_PARAMS(self):
+        """ 
+        General non-public default values for classification. These are meant to be changed only by direct intervention to the source code, 
+        which is assured by not defining the setter method for this property.
+        """
+        _DEFAULT_CLASSIF_PARAMS = {"data": None, "classif_var": None, 
+                                  "W_0": 3, "tol_const": 5,
+                                  "c_1": 2.5, "W_1": 30,
+                                  "c_2": 1, "W_2": 30, "p_1": 0.7,
+                                  "W_3": 5, "p_2": 0.9,
+                                  "tol_vol_1": 5, "tol_vol_2": 5,
+                                  "tol_rain_1": 5, "tol_rain_2": 10,
+                                  "volatile_diffs": True}
+        return _DEFAULT_CLASSIF_PARAMS   
+    
     
     def __init__(self, data, main_var="prutok_computed", start_date=None, end_date=None, periodicity="2T", check_per=True, 
-                 date_col="date", name="some_TS"):
+                 date_col="date", name="some_TS", classif_defaults=None):
         """Please see help(TS_Class) for further information."""
         self.name = name
         if start_date is None:
@@ -320,6 +343,12 @@ class TS_Class:
         self.plotter = Plotter(self) 
         self.period_data = None
         self.period_data_2 = None
+        
+        self.default_classif_params = self.DEFAULT_CLASSIF_PARAMS.copy()  # instance classif. parameters defaults
+        if type(classif_defaults) is dir:
+            for key, value in classif_defaults.items():  # for individual instances defaults can be changed
+                self.default_classif_params[key] = value
+        
         # automatically add first and second differences of the main variable
         self.data[main_var + "_diff_1_"] = self.data[main_var].diff()
         self.data[main_var + "_diff_2_"] = self.data[main_var + "_diff_1_"].diff()
@@ -577,7 +606,7 @@ class TS_Class:
     
     
     def classify(self, **kwargs):       
-        params = self.DEFAULT_CLASSIF_PARAMS.copy()
+        params = self.default_classif_params.copy()
         
         for arg, val in kwargs.items():  # change default classification parameters based on input
             params[arg] = val
@@ -599,7 +628,7 @@ class TS_Class:
         self.plotter.plot_categories(**kwargs)
 
 
-    ## models ##
+    ## models ##   TO DO: create seperate class for them
     def get_ETS(self, variable, model_name, groupby = None, show_progress = True,
                 error="add", trend="add", seasonal="add", damped_trend=False, seasonal_periods=720):
         """Note: there is 720 observations per day, for 1 day periodicity we need 720 seasonal components, which is too 
@@ -700,34 +729,11 @@ class TS_Class:
             return model.intercept_
         if give == "model":
             return model
-          
-          
-          
-    def get_cycl_adj(self, var = None, weekdays = False, ext_fit = False, fit = None, return_fit = False):
-        """Create cyclically adjusted features based on hour of the day and the day of the week"""
-        if var == None:
-            var = self.main_var
-        if ext_fit & (fit==None):
-            raise ValueError("If the external fit is chosen, the fit needs to be given")
-        
-        if not ext_fit:
-            self.data = cyclical_adj_full(self.data, weekdays, var, return_fit)
-        else:
-            self.data = cyclical_adj_external(self.data, fit, var)
-
-    def get_smooth_cycl_adj(self, var = None, weekdays = False, window  = 7, center = True, min_periods = 1, display_smoothed_adj = True,
-                                    ext_fit = False, fit = None):
-        """Created smoothed out cyclically adjusted features based on hour of the day and the day of the week"""
-        if var == None:
-            var = self.main_var
-        if ext_fit & (fit==None):
-            raise ValueError("If the external fit is chosen, the fit needs to be given")
-        
-        self.data = get_smooth_cycl_adjustment_full(self.data,var,weekdays,window,center,min_periods,display_smoothed_adj, ext_fit, fit)
         
     
 
 class Plotter:
+    """Class for plotting TS_Class object's data."""
     
     def __init__(self, TS_object):
         self.ts = TS_object
@@ -854,8 +860,9 @@ class Plotter:
         if ret_plots:
             return output
             
-    def plot_categories(self, categories="all", classif_var=None, only_events=False,
-                        period="all", start_time=None, subset=None, fig_size=None):
+    def plot_categories(self, categories="all", classif_var=None, only_events=True,
+                        period="all", start_time=None, subset=None, fig_size=None,
+                        corrections=None):
         if classif_var is None:
             classif_var = self.ts.main_var
         
@@ -879,7 +886,7 @@ class Plotter:
             if only_events:       # plot only when there are events of interest
                 plot_this = group_data[classif_var + "_category"].isin(cats_list).any()  
             if plot_this:
-                plot_categories(group_data, classif_var, unit, categories, fig_size)    
+                plot_categories(group_data, classif_var, unit, categories, fig_size, corrections)    
     
        
     def _get_ax(self, ax, group_data, unit, variable, include, rain_lims, which, rain_var=None, marker=None):  
@@ -1008,9 +1015,9 @@ class Plotter:
 
 
 
-class Data_Explorer:
-    
-    DEFAULT_TS_PARAMS = {}
+class DataExplorer:
+    """Extension of TS_Class for automatization of handling of multiple instances."""
+    DEFAULT_TS_PARAMS = {}  # TO DO: write default TS_Class initialization parameters, beautify __init__ method
     
     def __init__(self, datas_dictionary, kwargs_dict={} 
                  ##, main_vars = None, 
@@ -1034,6 +1041,8 @@ class Data_Explorer:
                       else kwargs_dict[site]["check_per"] for site in self.sites}
         date_cols = {site: "date" if dict_check([site,"date_col"]) or kwargs_dict[site]["date_col"] is None
                       else kwargs_dict[site]["date_col"] for site in self.sites}
+        classif_defaults = {site: None if dict_check([site,"classif_defaults"]) or kwargs_dict[site]["classif_defaults"] is None
+                            else kwargs_dict[site]["classif_defaults"] for site in self.sites}
         ##if main_vars is None: main_vars = {site: "prutok_computed" for site in self.sites}
         ##if start_dates is None: start_dates = {site: None for site in self.sites}
         ##if end_dates is None: end_dates = {site: None for site in self.sites}
@@ -1044,14 +1053,16 @@ class Data_Explorer:
         self.TS_objects = {site: TS_Class(datas_dictionary[site], main_var=main_vars[site],
                                           start_date=start_dates[site], end_date=end_dates[site], 
                                           periodicity=periodicities[site], check_per=check_pers[site], 
-                                          date_col=date_cols[site], name=site
+                                          date_col=date_cols[site], name=site, classif_defaults=classif_defaults[site]
                                           ) for site in self.sites}
         
         self.data_dict = {site: self.TS_objects[site].data for site in self.sites}  # pointer to active TS data
         self._joined_data = join_data(self.data_dict)
-        self.TS_objects["_joined"] = TS_Class(self._joined_data, main_var=main_vars[self.sites[0]],
-                                             start_date=None, end_date=None, periodicity=periodicities[self.sites[0]], 
-                                             check_per=False, date_col="date", name="_joined")
+        site_0 = self.sites[0]
+        self.TS_objects["_joined"] = TS_Class(self._joined_data, main_var=main_vars[site_0],
+                                             start_date=None, end_date=None, periodicity=periodicities[site_0], 
+                                             check_per=False, date_col="date", name="_joined", 
+                                             classif_defaults=classif_defaults[site_0])
         self.main_sites = self.sites.copy()
         self.sites.append("_joined")
         self.data_dict["_joined"] = self.TS_objects["_joined"].data
@@ -1102,7 +1113,8 @@ class Data_Explorer:
         site_0 = self.sites[0]
         self.TS_objects["_joined"] = TS_Class(self._joined_data, main_var=self.main_vars[site_0],
                                              start_date=None, end_date=None, periodicity=self.periodicities[site_0], 
-                                             check_per=False, date_col="date", name="_joined")
+                                             check_per=False, date_col="date", name="_joined",
+                                             classif_defaults=classif_defaults[site_0])
         self.update_main_attrs()  # incorporate _joined to main attributes    
                
     
@@ -1169,7 +1181,8 @@ class Data_Explorer:
         self.update_main_attrs()
     
 
-def classify(data, classif_var="prutok_computed", W_0=3,
+def classify(data, classif_var="prutok_computed", 
+             W_0=3, tol_const=5,
              c_1=2.5, W_1=30,
              c_2=1, W_2=30, p_1=0.7,
              W_3=5, p_2=0.9,
@@ -1181,6 +1194,8 @@ def classify(data, classif_var="prutok_computed", W_0=3,
     data[classif_var + "_category"] = "OK"
     # priority 5
     const = data[classif_var].rolling(window=W_0, center=True).std() == 0
+    const = join_series(const.astype(int), tol = tol_const, join = 0)  # delete small islands of volatility
+    const = const.astype(bool)
     data.loc[const, classif_var + "_category"] = "const_value"
     
     # priority 4
@@ -1247,7 +1262,7 @@ def classify(data, classif_var="prutok_computed", W_0=3,
     #data = pd.concat([data, dummies], axis=1)
     return data
 
-def plot_categories(df, classif_var, unit, categories="all", fig_size=None):
+def plot_categories(df, classif_var, unit, categories="all", fig_size=None, corrections=None):
     
     if categories == "all":
         cats = list(df[classif_var + "_category"].unique())
@@ -1261,6 +1276,7 @@ def plot_categories(df, classif_var, unit, categories="all", fig_size=None):
         fig_size = (10, 6)
     plt.figure(figsize=fig_size)
     plt.plot(df['date'], df[classif_var], label=classif_var, color='blue')  # Line plot for var1
+    
 
     # Plot special categories as scatter plots with different markers
     markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*", 'prol_down': "v"}  # Define markers for each category (max 6 categories)
@@ -1272,12 +1288,15 @@ def plot_categories(df, classif_var, unit, categories="all", fig_size=None):
             plt.plot(df['date'], df[column], label=cat, linestyle='-', marker=markers[cat], color = colors[cat])
         else:
             plt.scatter(df['date'], df[column], label=cat, marker=markers[cat], color = colors[cat])
-
+    
+    if corrections is not None:
+        plt.plot(df['date'], df[corrections], label=corrections, color='purple')  # Line plot for corrected data
     plt.xlabel('Date and Time')
     plt.ylabel(classif_var)
     plt.title(f'Time Series for {unit}')
     plt.legend()
     plt.show()
+
 
 
 def identify_groups(indicators):
@@ -1358,3 +1377,50 @@ def loc_extr(values, both=True, minim=True):
     if minim:
         return x==min_
     return x==max_
+
+def outliers_ext_indic(outlier_indic, ext_by=1):
+    extended_indices = []
+    for i in outlier_indic:
+        for j in range(ext_by,0,-1):
+            extended_indices.append(i - j)  # Add the rows above
+        for j in range(ext_by+1):
+            extended_indices.append(i+j)      # Add the chosen row and the rows below
+    return extended_indices 
+
+    
+def correct_data(data, corr_var,
+                 outliers_window=1,
+                 volatility_window=5):
+    """volatility window = 1 -> no correction"""
+    
+    def mean_around(series):
+        center = int(len(series)/2)
+        center_index = series.index[center]
+        mean = series.drop(center_index).mean()
+        return mean
+    
+    data[corr_var + "_corrected_"] = data[corr_var]
+    data["_MA_5"] = data[corr_var].rolling(5, center=True).mean()
+    data["_MA_15"] = data[corr_var].rolling(15, center=True).mean()
+    data["_MA_30"] = data[corr_var].rolling(30, center=True).mean()
+    
+    outlier_indic = data[corr_var + "_category"] == "outlier"
+    outlier_ext_indic = outliers_ext_indic(data.index[outlier_indic], outliers_window)
+    outliers_correction = data[corr_var][outlier_ext_indic].rolling(2*outliers_window+1, center=True).apply(mean_around) 
+    data.loc[outlier_indic, corr_var + "_corrected_"] = outliers_correction[outlier_indic]
+    
+    vol_indic = data[corr_var + "_category"] == "volatile"
+    vol_correction = data[corr_var].rolling(volatility_window, center=True).mean()
+    data.loc[vol_indic, corr_var + "_corrected_"] = vol_correction[vol_indic]
+    
+    # TO DO: the rest
+    zeros_indic = data[corr_var + "_category"] == "zero_value"
+    zeros_correction = data["_MA_15"]
+    data.loc[zeros_indic, corr_var + "_corrected_"] = zeros_correction[zeros_indic]
+    
+    
+    const_indic = data[corr_var + "_category"] == "const_value"
+    const_correction = data["_MA_15"]
+    data.loc[const_indic, corr_var + "_corrected_"] = const_correction[const_indic]
+    return data
+
