@@ -8,7 +8,6 @@ import numpy as np
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 
-##SP - tinker with dummy variables
 from statsmodels.formula.api import ols
 import statsmodels.api as sm
 from statsmodels.tsa.exponential_smoothing.ets import ETSModel
@@ -18,33 +17,42 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 
 def hr_func(ts):
-    return ts.hour ##Goes
 
 def create_cyclical_features(data):
     data["hour"] = data["date"].apply(hr_func)
     data["weekday"] = data["date"].apply(datetime.weekday)
-    data["weekend"] = data["weekday"] >=5 
     data.describe()
     return data
 
-def fit_cyclical_model(data, weekdays = True, var = "Prietok"):
+def fit_cyclical_model(data, weekdays = True, var = "Prietok", filter_zeros = True, filter_rain = True, rain_quantile = 0.9):
+    """Fits a simple LR model to predict values for categorical variables used to eliminate cyclcity"""
+    data_filtered = data
+    if filter_zeros:
+        data_filtered = data_filtered[data_filtered[var]!=0]
+    if filter_rain:
+        rain_threshold = data_filtered[var].quantile(rain_quantile)
+        data_filtered = data_filtered[data_filtered[var]<= rain_threshold]
+
     if weekdays:
         relev = "weekday"
     else:
         relev = "weekend"
-    fit = ols(f"{var}~ C(hour) * C({relev})", data = data).fit()
+
+    fit = ols(f"{var}~ C(hour) * C({relev})", data = data_filtered).fit()
     return(fit)
 
 def get_cyclical_adjustment(data, fit, var = "Prietok"):
+    """Uses the fitted model to seasonaly adjust"""
     if 'hour' not in data: ##Create cyclical features, if the don't already exist
         data = create_cyclical_features(data)
-    data["cyclical_adjustment"] = fit.predict(data) - data[var].mean() 
-    data["flow_cyclicaly_adjusted"] = data[var] - data["cyclical_adjustment"]
+    data[f"{var}_cyclical_adjustment"] = fit.predict(data) - data[var].mean() 
+    data[f"{var}_cyclicaly_adjusted"] = data[var] - data[f"{var}_cyclical_adjustment"]
     return data
 
-def cyclical_adj_full(data, weekdays = True, var = "Prietok", return_fit = False):
+def cyclical_adj_full(data, weekdays = True, var = "Prietok", return_fit = False, filter_zeros = True, filter_rain = True, rain_quantile = 0.9):
+    """One function for the whole workload"""
     data = create_cyclical_features(data)
-    fit = fit_cyclical_model(data, weekdays, var)
+    fit = fit_cyclical_model(data, weekdays, var, filter_zeros, filter_rain, rain_quantile)
     data = get_cyclical_adjustment(data, fit, var)
 
     if return_fit:
@@ -52,9 +60,29 @@ def cyclical_adj_full(data, weekdays = True, var = "Prietok", return_fit = False
     return data
 
 def cyclical_adj_external(data, fit, var = "Prietok"):
+    """Optionality to use external fit"""
     data = create_cyclical_features(data)
     data = get_cyclical_adjustment(data, fit, var)
 
+    return data
+def smoothing_cycl_adjustment(data, adj_var = 'Prietok_cyclical_adjustment', window  = 7, center = True, min_periods = 1):
+    """Smooth out cyclical adjustment by using rolling window (rolling mean)"""
+    return data[adj_var].rolling(window=window, center=center, min_periods = min_periods).mean()
+
+def apply_smooth_cyclical_adjustment(data, var = "Prietok", adj_var = 'Prietok_cyclical_adjustment', window  = 7, center = True, min_periods = 1):
+    smoothly_adjusted_main_var = data[var] - smoothing_cycl_adjustment(data, adj_var, window, center, min_periods)
+    return smoothly_adjusted_main_var
+
+def get_smooth_cycl_adjustment_full(data, var = "Prietok",  weekdays = False, window  = 7, center = True, min_periods = 1, display_smoothed_adj = True,
+                                    ext_fit = False, fit = None, filter_zeros = True, filter_rain = True, rain_quantile = 0.9):
+    if ext_fit:
+        data = cyclical_adj_external(data, fit, var)
+    else:
+        data = cyclical_adj_full(data, weekdays, var, filter_zeros, filter_rain, rain_quantile)
+
+    if display_smoothed_adj:
+        data[f"{var}_smooth_cyclical_adjustment"] = smoothing_cycl_adjustment(data, f"{var}_cyclical_adjustment", window, center, min_periods)
+    data[f"{var}_smooth_cyclicaly_adjusted"] = apply_smooth_cyclical_adjustment(data, var, f"{var}_cyclical_adjustment", window, center, min_periods)
     return data
 
 def load_series(directory, files_list=False):
@@ -1146,7 +1174,9 @@ def classify(data, classif_var="prutok_computed",
              W_3=5, p_2=0.9,
              tol_vol_1=5, tol_vol_2=5,
              tol_rain_1=5, tol_rain_2=10,
-             volatile_diffs=True):
+             volatile_diffs=True,
+             num_back = 10, num_fol = 3,
+             fol_tresh = 1, W_4 = 3, c_3 = 2):
     data[classif_var + "_category"] = "OK"
     # priority 5
     const = data[classif_var].rolling(window=W_0, center=True).std() == 0
@@ -1182,7 +1212,30 @@ def classify(data, classif_var="prutok_computed",
     # priority 2
     zeros = data[classif_var] <= 0
     data.loc[zeros, classif_var + "_category"] = "zero_value"
-    
+
+    # priority 1.5
+    ##Typically flags either non-classified outliers or variables after outliers
+    first_diff = data[classif_var].diff()
+    rain_prev = rainy.shift(list(range(1, 1+num_back))).any(axis = 1) ##Check whether any of previous num_back obs. were classified as rainy
+    sd_1 = first_diff.rolling(window=W_1, center=True).std()
+    T = c_3*sd_1##TODO: Define the treshold more accurately
+    ma_4 = data[classif_var].rolling(window=W_4).mean() ##Average over preceeding W_4 values
+    decline = ma_4 - data[classif_var] > T ##Check, whether current value is significantly bellow avarage of W_4 previous observations
+
+    ##Check, whether the following num_fol values are bellow the value preceeding the theoretical drop 
+    for i in range(1, num_fol+1):
+        mask = data[classif_var].shift(-i) < data[classif_var].shift()*fol_tresh
+        if i ==1:
+            fol_down = mask
+        else:
+            fol_down = fol_down & mask
+        
+    prol_down = decline & ~ rain_prev & fol_down
+    ##TODO: Decide wether to implement check for zero values (or wether to keep zeroes included)
+    ##TODO: Decide wether following W_4 values should be marked as well
+    data.loc[prol_down, classif_var + "_category"] = "prol_down"
+
+
     # priority 1
     first_diff = data[classif_var].diff()
     first_diff_plus = first_diff.shift(-1)
@@ -1214,8 +1267,8 @@ def plot_categories(df, classif_var, unit, categories="all", fig_size=None, corr
     
 
     # Plot special categories as scatter plots with different markers
-    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*"}  # Define markers for each category (max 5 categories)
-    colors = ["green", "brown", "red", "yellow", "orange"]
+    markers = {"volatile_rain":'o', 'const_value':'s', 'outlier':'^', 'zero_value':'D','volatile':"*", 'prol_down': "v"}  # Define markers for each category (max 6 categories)
+    colors = ["green", "brown", "red", "yellow", "orange", "black"]
     colors = {key: col for key, col in zip(markers.keys(), colors)}
     for i, column in enumerate(cols):
         cat = cats[i]
