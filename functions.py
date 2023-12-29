@@ -695,6 +695,28 @@ class TS_Class:
             models = models[subset]
         for unit, mod, res in models:
             self.ARIMA_diagnostics(res, unit, model_name)
+    
+    def get_cycl_adj(self, var = None, weekdays = False, ext_fit = False, fit = None, return_fit = False, filter_zeros = True, filter_rain = True, rain_quantile = 0.9):
+        """Create cyclically adjusted features based on hour of the day and the day of the week"""
+        if var == None:
+            var = self.main_var
+        if ext_fit & (fit==None):
+            raise ValueError("If the external fit is chosen, the fit needs to be given")
+        
+        if not ext_fit:
+            self.data = cyclical_adj_full(self.data, weekdays, var, return_fit, filter_zeros, filter_rain, rain_quantile)
+        else:
+            self.data = cyclical_adj_external(self.data, fit, var)
+
+    def get_smooth_cycl_adj(self, var = None, weekdays = False, window  = 7, center = True, min_periods = 1, display_smoothed_adj = True,
+                                    ext_fit = False, fit = None, filter_zeros = True, filter_rain = True, rain_quantile = 0.9):
+        """Created smoothed out cyclically adjusted features based on hour of the day and the day of the week"""
+        if var == None:
+            var = self.main_var
+        if ext_fit & (fit==None):
+            raise ValueError("If the external fit is chosen, the fit needs to be given")
+        
+        self.data = get_smooth_cycl_adjustment_full(self.data,var,weekdays,window,center,min_periods,display_smoothed_adj, ext_fit, fit, filter_zeros, filter_rain, rain_quantile)
             
     
     @staticmethod
