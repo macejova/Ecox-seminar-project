@@ -86,7 +86,7 @@ def get_smooth_cycl_adjustment_full(data, var = "Prietok",  weekdays = False, wi
     if ext_fit:
         data = cyclical_adj_external(data, fit, var)
     else:
-        data = cyclical_adj_full(data, weekdays, var, filter_zeros, filter_rain, rain_quantile)
+        data = cyclical_adj_full(data, weekdays, var, False, filter_zeros, filter_rain, rain_quantile)
 
     if display_smoothed_adj:
         data[f"{var}_smooth_cyclical_adjustment"] = smoothing_cycl_adjustment(data, f"{var}_cyclical_adjustment", window, center, min_periods)
