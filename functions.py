@@ -770,7 +770,7 @@ class Plotter:
              variable_2=None, include_2=["CMA", "CMA_bounds"], start_time_2=None, 
              window_2=30, b_mult_2=1, quantile_2=0.5, 
              rob_quantile_2=0.8, two_sided_rob_q_2=False, rob_b_mult_2=1, 
-             marker=None, show=True, ret_plots=False):
+             marker=None, show=True, ret_plots=False, rotate_x_ticks = False):
         """
         Plot method to visualize time series contained in the data.
         
@@ -869,6 +869,10 @@ class Plotter:
                 fig, ax = plt.subplots(figsize=fig_size)
                 # assign to figure its properties, get also right-handside y-axis if rain is plotted
                 ax, axb1 = self._get_ax(ax, group_data_1, unit_1, variable, include, rain_lims, 1, rain_var, marker)
+            
+            if rotate_x_ticks:
+                fig.autofmt_xdate(rotation=45)
+
             
             plt.grid(True)
             if show:
