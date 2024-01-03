@@ -54,7 +54,7 @@ def plot_categories_2(df, classif_var, unit, categories="all", fig_size=None, co
 
 
 #fig = plot_categories_2(explorer.TS_objects["MP3"].data.loc[s1[600:1000]], "prutok_computed", "example of Constant Values", 
-               categories=["zero_value", "const_value"], show=False, give_fig=True)
+#               categories=["zero_value", "const_value"], show=False, give_fig=True)
 #fig.suptitle('Updated Title', fontsize=16)  # Change the title
 #fig.get_axes()[0].set_ylabel('Flow' )  # Change the y-axis label
 #fig.savefig('new_figure.png')
