@@ -165,7 +165,6 @@ data =  correct_data(TS_object.data, TS_object.main_var, **corr_pars_dict)
 
 ## create output dataframe
 outputDataframe = data[[main_var, "date"]]
-outputDataframe.set_index('date', inplace=True)  # move date back to index
 
 outputDataframe[main_var + "_corrected"] = data[main_var + "_corrected_"]
 
@@ -176,6 +175,8 @@ dummies = pd.get_dummies(data[main_var + "_category"], prefix="")  # columns of 
 for category in dummies:
     outputDataframe[main_var + category] = dummies[category].astype(int)  # 0-1 indicators
     items_info.append(mikeio.ItemInfo(main_var + category))
+
+outputDataframe.set_index('date', inplace=True)  # move date back to index
 
 # print header
 if debug:
