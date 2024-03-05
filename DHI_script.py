@@ -50,8 +50,7 @@ import sys, subprocess
 from DHI_functions import *   ##
 
 # read arguments
-##args = sys.argv                  ### testing #######################
-args=["DHI_script.py", 1,0, in_files[k], out_files[k]] + [""]*len(parameterNames)
+args = sys.argv
 
 debug = int(args[1])
 onlyParameters = int(args[2])
