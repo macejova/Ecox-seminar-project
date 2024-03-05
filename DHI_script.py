@@ -36,18 +36,22 @@ the name of the examined TS):
 TS_chars_pars = ["start_date", "end_date", "periodicity", "check_per"] #date, date, nT, bool
 classif_pars = ["W_0", "tol_const","c_1", "W_1","c_2", "W_2", "p_1","W_3", "p_2","tol_vol_1", "tol_vol_2",
                 "tol_rain_1", "tol_rain_2","volatile_diffs","num_back", "num_fol","fol_tresh", "W_4", "c_3"] # volatile_diffs=bool, other num
-corr_pars = ["outliers_window", "volatility_window", "corr_vol"]  # corr_vol=boolean
+corr_pars = ["outliers_window", "volatility_window", "corr_vol",
+            "zeros_window", "zeros_ewm", "zeros_alpha", "zeros_ignore_na",
+            "const_window", "const_ewm", "const_alpha", "const_ignore_na"]  # corr_vol, zeros/const_ewm, zeros/const_ignore_na=boolean
 
 parameterNames = TS_chars_pars + classif_pars + corr_pars
 TS_chars_pars_dict, classif_pars_dict, corr_pars_dict  = {}, {}, {}  # for creation of **kwargs
-boolean_pars = ["check_per", "volatile_diffs", "corr_vol"]
+boolean_pars = ["check_per", "volatile_diffs", "corr_vol", 
+                "zeros_ewm", "zeros_ignore_na", "const_ewm", "const_ignore_na"]
 ############ End of parameters
 
 import sys, subprocess
 from DHI_functions import *   ##
 
 # read arguments
-args = sys.argv
+##args = sys.argv                  ### testing #######################
+args=["DHI_script.py", 1,0, in_files[k], out_files[k]] + [""]*len(parameterNames)
 
 debug = int(args[1])
 onlyParameters = int(args[2])
@@ -79,7 +83,6 @@ if onlyParameters==0:
         print("Running script:")
         print(args[0])
 
-
 ## read from inputs non-default parameters
 for i, p in enumerate(params):
     if str(p).strip() == "":    # assuming that leaving parameters blank in GF leads to empty string -> use default value of parameter
@@ -105,16 +108,15 @@ for key, val in corr_pars_dict.items():
 
 non_default = list(TS_chars_pars_dict.keys()) + list(classif_pars_dict.keys()) + list(corr_pars_dict.keys())
 
-
 if debug == 1:
     if len(parameterNames) == len(params):
         print("\nParameters used:")
         for i in range(0,len(parameterNames)):
             print(parameterNames[i] + " = " + params[i])
         
-        print("Parameters with non-default values:")     ##
-        for p in non_default:
-            print(p)
+#        print("Parameters with non-default values:")     ##
+#        for p in non_default:
+#            print(p)
     else:
         raise ValueError("Length of parameters and parameter names differs!")
 
@@ -152,7 +154,7 @@ main_var = inputDataframe.columns[0]    # assuming examined TS is the first colu
 inputDataframe.reset_index(inplace=True)
 inputDataframe.rename(columns={'index': 'date'}, inplace=True) # assuming observation datetimes are the index of the dataframe
 
-# Set the 'Date' column as a datetime type
+# Set the 'date' column as a datetime type
 inputDataframe['date'] = pd.to_datetime(inputDataframe['date'])
 
 ## perform classification and correction 
@@ -168,6 +170,8 @@ outputDataframe = data[[main_var, "date"]]
 
 outputDataframe[main_var + "_corrected"] = data[main_var + "_corrected_"]
 
+outputDataframe
+
 # Item info
 items_info = [inputItemInfo, inputItemInfo] # for original and corrected TS
 
@@ -175,7 +179,7 @@ dummies = pd.get_dummies(data[main_var + "_category"], prefix="")  # columns of 
 for category in dummies:
     outputDataframe[main_var + category] = dummies[category].astype(int)  # 0-1 indicators
     items_info.append(mikeio.ItemInfo(main_var + category))
-
+    
 outputDataframe.set_index('date', inplace=True)  # move date back to index
 
 # print header
