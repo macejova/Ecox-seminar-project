@@ -29,7 +29,7 @@ the name of the examined TS):
     
  ---- TO DO ---- 
 * establish agreed upon conventions for naming of output variables
-* verify whether volatility should be smoothed or not by default (latter as of now)
+* verify whether volatility should be smoothed or not by default (latter as of now, parameter corr_vol=False)
 '''
 
 ############ Parameters:
