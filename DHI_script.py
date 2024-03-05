@@ -172,7 +172,13 @@ outputDataframe[main_var + "_corrected"] = data[main_var + "_corrected_"]
 outputDataframe
 
 # Item info
-items_info = [inputItemInfo, inputItemInfo] # for original and corrected TS
+corrected_ItemInfo = mikeio.ItemInfo(
+    name=main_var + "_corrected",
+    unit=inputItemInfo.unit,
+    itemtype=inputItemInfo.type,
+    data_value_type=inputItemInfo.data_value_type
+)
+items_info = [inputItemInfo, corrected_ItemInfo] # for original and corrected TS
 
 dummies = pd.get_dummies(data[main_var + "_category"], prefix="")  # columns of dummies named as "_CategoryName"
 for category in dummies:
@@ -187,7 +193,7 @@ if debug:
     print(outputDataframe.head())
 
 # output item info:
-outputItemInfo = inputItemInfo
+outputItemInfo = inputItemInfo2
 if debug:
     print("\nOutput item info:")
     print(outputItemInfo)
