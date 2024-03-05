@@ -1376,19 +1376,33 @@ def loc_extr(values, both=True, minim=True):
     return x==max_
 
 def outliers_ext_indic(outlier_indic, ext_by=1):
+    """Extend integer indeces around already present indeces by given number of observations."""
     extended_indices = []
     for i in outlier_indic:
-        for j in range(ext_by,0,-1):
-            extended_indices.append(i - j)  # Add the rows above
+        for j in range(ext_by,0,-1):  # decreasing positive j
+            if (i-j) not in extended_indices:
+                extended_indices.append(i - j)  # Add the rows above
         for j in range(ext_by+1):
-            extended_indices.append(i+j)      # Add the chosen row and the rows below
-    return extended_indices 
+            if (i+j) not in extended_indices:
+                extended_indices.append(i + j)      # Add the chosen row and the rows below
+    return sorted(extended_indices) 
 
+def centered_ewm(series, alpha, ignore_na=False):
+    """Calculates centered exponentially weighted moving average."""
+    forward = series.ewm(alpha=alpha, ignore_na=ignore_na).mean()
+    backward = series.iloc[::-1].ewm(alpha=alpha, ignore_na=ignore_na).mean().iloc[::-1]
+    result = (forward + backward)/2
+    return result
     
-def correct_data(data, corr_var,
+def correct_data(data, corr_var, date_col="date",
                  outliers_window=1,
-                 volatility_window=5, corr_vol=False):
-    """volatility window = 1 -> no correction"""
+                 volatility_window=5, corr_vol=False,
+                 zeros_window=15, zeros_ewm=False, zeros_alpha=0.6, zeros_ignore_na=False,
+                 const_window=15, const_ewm=False, const_alpha=0.6, const_ignore_na=False):
+    """
+    Creating corrected data. Currently, everything as short-term corrections + combination of naive corrections.
+    Prolonged drops not corrected at all. Volatile rain is considered as OK.
+    """
     
     def mean_around(series):
         center = int(len(series)/2)
@@ -1396,28 +1410,46 @@ def correct_data(data, corr_var,
         mean = series.drop(center_index).mean()
         return mean
     
-    data[corr_var + "_corrected_"] = data[corr_var]
-    data["_MA_5"] = data[corr_var].rolling(5, center=True).mean()
-    data["_MA_15"] = data[corr_var].rolling(15, center=True).mean()
-    data["_MA_30"] = data[corr_var].rolling(30, center=True).mean()
+    # initialize as OK observations, ie OK and volatile rain
+    data[corr_var + "_corrected_"] = data[corr_var + "_OK"].fillna(data[corr_var + "_volatile_rain"])  
     
+    if corr_vol:  # if to correct volatility
+        vol_indic = data[corr_var + "_category"] == "volatile"
+        vol_correction = data[corr_var].rolling(volatility_window, center=True).mean()  # smoothing by MA
+        data.loc[vol_indic, corr_var + "_corrected_"] = vol_correction[vol_indic]
+    else:    # if just keep original values where volatile
+        data[corr_var + "_corrected_"] = data[corr_var + "_corrected_"].fillna(data[corr_var + "_volatile"])  
+    
+    # outliers
     outlier_indic = data[corr_var + "_category"] == "outlier"
-    outlier_ext_indic = outliers_ext_indic(data.index[outlier_indic], outliers_window)
+    outlier_ext_indic = outliers_ext_indic(data.index[outlier_indic], outliers_window)  # add observations around outliers
     outliers_correction = data[corr_var][outlier_ext_indic].rolling(2*outliers_window+1, center=True).apply(mean_around) 
+    outlier_to_zero = outliers_correction == 0   # if outlier is surrounded by zero values...
+    outliers_correction.loc[outlier_to_zero.index] = data.loc[outlier_to_zero.index,corr_var]   # better keep its original value
     data.loc[outlier_indic, corr_var + "_corrected_"] = outliers_correction[outlier_indic]
     
-    if corr_vol:
-        vol_indic = data[corr_var + "_category"] == "volatile"
-        vol_correction = data[corr_var].rolling(volatility_window, center=True).mean()
-        data.loc[vol_indic, corr_var + "_corrected_"] = vol_correction[vol_indic]
     
-    # TO DO: the rest
+    # zero values
     zeros_indic = data[corr_var + "_category"] == "zero_value"
-    zeros_correction = data["_MA_15"]
+    if zeros_ewm:   # use exponentially weighted moving averages
+        zeros_correction = centered_ewm(data[corr_var + "_corrected_"], zeros_alpha, zeros_ignore_na)
+    else:     # use ordinary moving averages
+        zeros_correction = data[corr_var + "_corrected_"].rolling(zeros_window ,min_periods=1, center=True).mean()  # effectively np.nanmean
     data.loc[zeros_indic, corr_var + "_corrected_"] = zeros_correction[zeros_indic]
     
-    
+    # constant values
     const_indic = data[corr_var + "_category"] == "const_value"
-    const_correction = data["_MA_15"]
+    if const_ewm:   # use exponentially weighted moving averages
+        const_correction = centered_ewm(data[corr_var + "_corrected_"], const_alpha, const_ignore_na)
+    else:     # use ordinary moving averages
+        const_correction = data[corr_var + "_corrected_"].rolling(const_window ,min_periods=1, center=True).mean()  # effectively np.nanmean
     data.loc[const_indic, corr_var + "_corrected_"] = const_correction[const_indic]
+    
+    # naive corrections, ie linear interpolation between last observation before and first observation after span of malfunction
+    # replace remaining NaNs by linear interpolation
+    time_index_df = data.set_index(date_col)
+    time_index_df["naive"] = time_index_df[corr_var + "_corrected_"].interpolate(method='time') # time based linear interpolation
+    time_index_df.index = data.index
+    data[corr_var + "_corrected_"] = time_index_df["naive"]
+    
     return data
